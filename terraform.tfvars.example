@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenClaw on GCP -- Example Variables
+# Copy this to terraform.tfvars and fill in your values.
+#
+# SECURITY: Never commit terraform.tfvars to version control.
+#           Add it to .gitignore.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Required
+project_id = "my-gcp-project"
+
+# Region & Zone
+region = "us-central1"
+zone   = "us-central1-c"
+
+# Developers -- each gets an isolated OpenClaw pod + PVC
+developers = {
+  "alice" = { active = true }
+  "bob"   = { active = true }
+}
+
+# OpenClaw
+openclaw_version = "latest"
+model_primary    = "litellm/gemini-3.1-pro-preview"
+model_fallbacks  = "[\"litellm/gemini-3.1-flash-lite-preview\"]"
+
+# Optional -- leave empty to auto-generate a 48-char hex token
+# gateway_auth_token = ""
+
+# Optional secrets (sensitive -- prefer TF_VAR_ env vars)
+# telegram_bot_token = ""
+# brave_api_key      = ""
+
+# ── Optional: Execution VMs ─────────────────────────────────────────────────
+# Uncomment to add VMs for OS-native command execution.
+# OS is auto-detected from the image name.
+
+# exec_vms = {
+#   "windows" = { os_image = "windows-cloud/windows-2022-core" }
+#   "linux"   = { os_image = "debian-cloud/debian-12", machine_type = "e2-standard-2" }
+# }

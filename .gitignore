@@ -1,0 +1,21 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# Secrets -- NEVER commit
+terraform.tfvars
+*.auto.tfvars
+
+# Tools (local gcloud SDK, etc.)
+tools/
+
+# OS
+.DS_Store
+
+# ADC / credentials
+adc_temp.json
+*.pem
+*.key

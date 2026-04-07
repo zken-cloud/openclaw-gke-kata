@@ -1,0 +1,131 @@
+{
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "${GATEWAY_AUTH_TOKEN}"
+    },
+    "tls": {
+      "enabled": true,
+      "autoGenerate": false,
+      "certPath": "/app/tls/gateway-cert.pem",
+      "keyPath": "/app/tls/gateway-key.pem"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": true
+    },
+    "controlUi": {
+      "allowInsecureAuth": false,
+      "dangerouslyDisableDeviceAuth": true
+    }
+  },
+
+  "channels": {},
+
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+
+  "models": {
+    "providers": {
+      "litellm": {
+        "api": "openai-completions",
+        "baseUrl": "http://litellm.openclaw.svc.cluster.local:4000/v1",
+        "apiKey": "sk-litellm-local-only",
+        "models": [
+          { "id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview" },
+          { "id": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview" }
+        ]
+      }
+    }
+  },
+
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "${MODEL_PRIMARY}",
+        "fallbacks": ${MODEL_FALLBACKS}
+      },
+      "workspace": "/app/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      },
+      "sandbox": {
+        "mode": "off"
+      }
+    }
+  },
+
+  "tools": {
+    "deny": ["browser"],
+    "exec": {
+      "security": "allowlist",
+      "ask": "off",
+      "safeBins": ["jq", "grep", "cut", "sort", "uniq", "head", "tail", "tr", "wc", "cat", "ls", "find", "echo", "date", "pwd", "whoami", "env", "mkdir", "cp", "mv", "rm", "touch", "chmod", "node", "npm", "npx", "git", "curl", "wget", "python3", "pip3", "terraform", "gcloud", "hostname", "systeminfo", "ipconfig", "dir", "type", "powershell"]
+    },
+    "elevated": {
+      "enabled": false
+    },
+    "web": {
+      "search": {
+        "enabled": true
+      },
+      "fetch": {
+        "enabled": true
+      }
+    }
+  },
+
+  "logging": {
+    "redactSensitive": "tools",
+    "file": "/var/log/openclaw/openclaw.log",
+    "level": "info",
+    "redactPatterns": [
+      "sk-[a-zA-Z0-9]{32,}",
+      "ghp_[a-zA-Z0-9]{36}",
+      "xoxb-[0-9]+-[a-zA-Z0-9]+",
+      "ya29\\.[a-zA-Z0-9_-]+",
+      "AKIA[0-9A-Z]{16}",
+      "ASIA[0-9A-Z]{16}",
+      "[0-9]+:AA[a-zA-Z0-9_-]{33,}"
+    ]
+  },
+
+  "plugins": {
+    "enabled": true,
+    "allow": []
+  },
+
+  "discovery": {
+    "mdns": {
+      "mode": "off"
+    }
+  },
+
+  "browser": {
+    "enabled": false,
+    "evaluateEnabled": false
+  },
+
+  "hooks": {
+    "enabled": false,
+    "maxBodyBytes": 262144
+  },
+
+  "commands": {
+    "useAccessGroups": true,
+    "bash": false,
+    "debug": false
+  }
+}
