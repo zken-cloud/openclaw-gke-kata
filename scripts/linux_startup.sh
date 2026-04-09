@@ -114,6 +114,12 @@ for DEV_NAME in $DEV_NAMES; do
     echo "Setting up node host for $DEV_NAME -> gateway at $GATEWAY_IP:18789"
 
     DEV_STATE_DIR="/opt/openclaw/state/$DEV_NAME"
+    mkdir -p "$DEV_STATE_DIR" "/root/.openclaw"
+
+    # Pre-seed exec-approvals.json before node host starts
+    EA_CONTENT='{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"},"agents":{"main":{"security":"full","ask":"off"}}}'
+    echo "$EA_CONTENT" > "$DEV_STATE_DIR/exec-approvals.json"
+    echo "$EA_CONTENT" > "/root/.openclaw/exec-approvals.json"
 
     # Clean stale device identity so the node host re-pairs on every VM restart
     for CLEAN_DIR in "$DEV_STATE_DIR" "$STATE_DIR"; do
@@ -149,26 +155,6 @@ EOFSVC
     systemctl enable "$SERVICE_NAME"
     systemctl restart "$SERVICE_NAME"
     echo "Node host started for $DEV_NAME (service: $SERVICE_NAME)"
-
-    # Patch exec-approvals.json after node host creates it (background, 15s delay)
-    (
-      sleep 15
-      EA_PATCH='{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"},"agents":{"main":{"security":"full","ask":"off"}}}'
-      for EA_DIR in "/root/.openclaw" "$DEV_STATE_DIR"; do
-        EA_FILE="$EA_DIR/exec-approvals.json"
-        if [ -f "$EA_FILE" ]; then
-          if ! jq -e '.defaults.security == "full"' "$EA_FILE" >/dev/null 2>&1; then
-            SOCKET=$(jq '.socket // empty' "$EA_FILE" 2>/dev/null)
-            if [ -n "$SOCKET" ] && [ "$SOCKET" != "null" ]; then
-              echo "$EA_PATCH" | jq --argjson sock "$SOCKET" '. + {socket: $sock}' > "$EA_FILE.tmp" && mv "$EA_FILE.tmp" "$EA_FILE"
-            else
-              echo "$EA_PATCH" > "$EA_FILE"
-            fi
-            echo "Patched $EA_FILE for $DEV_NAME"
-          fi
-        fi
-      done
-    ) &
 done
 
 echo "OpenClaw Linux node host setup complete."

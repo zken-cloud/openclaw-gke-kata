@@ -155,6 +155,20 @@ foreach ($devName in $developers.PSObject.Properties.Name) {
 `$env:OPENCLAW_STATE_DIR = "C:\openclaw\state\$devName"
 if (-not (Test-Path `$env:OPENCLAW_STATE_DIR)) { New-Item -ItemType Directory -Path `$env:OPENCLAW_STATE_DIR -Force | Out-Null }
 
+# Pre-seed exec-approvals.json before node host starts so it reads correct values
+`$eaDirs = @(
+    `$env:OPENCLAW_STATE_DIR,
+    "C:\Windows\system32\config\systemprofile\.openclaw",
+    "C:\openclaw\state",
+    "`$env:USERPROFILE\.openclaw"
+)
+`$eaContent = '{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"},"agents":{"main":{"security":"full","ask":"off"}}}'
+foreach (`$d in `$eaDirs) {
+    if (-not `$d) { continue }
+    if (-not (Test-Path `$d)) { New-Item -ItemType Directory -Path `$d -Force | Out-Null }
+    `$eaContent | Set-Content -Path (Join-Path `$d "exec-approvals.json") -Encoding UTF8
+}
+
 # Re-fetch token from Secret Manager on each restart (supports rotation)
 `$token = gcloud secrets versions access latest --secret="openclaw-gateway-token" --quiet 2>&1
 if (`$LASTEXITCODE -eq 0) {
@@ -164,35 +178,6 @@ if (`$LASTEXITCODE -eq 0) {
     `$env:OPENCLAW_GATEWAY_TOKEN = [Environment]::GetEnvironmentVariable("OPENCLAW_GATEWAY_TOKEN", "Machine")
 }
 while (`$true) {
-    # Patch exec-approvals.json after node host creates it (background, 15s delay)
-    Start-Job -ScriptBlock {
-        Start-Sleep -Seconds 15
-        `$locations = @(
-            `$env:OPENCLAW_STATE_DIR,
-            "C:\Windows\system32\config\systemprofile\.openclaw",
-            "C:\openclaw\state"
-        )
-        `$patch = '{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"},"agents":{"main":{"security":"full","ask":"off"}}}'
-        foreach (`$dir in `$locations) {
-            if (-not `$dir) { continue }
-            `$f = Join-Path `$dir "exec-approvals.json"
-            if (Test-Path `$f) {
-                try {
-                    `$obj = Get-Content `$f -Raw | ConvertFrom-Json
-                    if (`$obj.defaults.security -ne "full") {
-                        `$merged = `$patch | ConvertFrom-Json
-                        if (`$obj.socket) { `$merged | Add-Member -NotePropertyName "socket" -NotePropertyValue `$obj.socket -Force }
-                        `$merged | ConvertTo-Json -Depth 5 | Set-Content -Path `$f -Encoding UTF8
-                        Write-Output "Patched `$f"
-                    }
-                } catch {}
-            } else {
-                if (-not (Test-Path `$dir)) { New-Item -ItemType Directory -Path `$dir -Force | Out-Null }
-                `$patch | Set-Content -Path `$f -Encoding UTF8
-                Write-Output "Created `$f"
-            }
-        }
-    } | Out-Null
     Write-Output "Starting openclaw node host for $devName (gateway: $${gatewayIp}:18789, TLS)..."
     & "C:\Program Files\nodejs\npx.cmd" openclaw node run --host $gatewayIp --port 18789 --tls --tls-fingerprint $tlsFingerprint --display-name "windows-$devName"
     Write-Output "Node host exited, restarting in 10 seconds..."
