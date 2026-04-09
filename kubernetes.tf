@@ -257,6 +257,10 @@ resource "kubernetes_deployment" "openclaw_brain" {
             value = "/app/workspace/.openclaw-state"
           }
           env {
+            name  = "NODE_TLS_REJECT_UNAUTHORIZED"
+            value = "0"
+          }
+          env {
             name  = "MODEL_PRIMARY"
             value = var.model_primary
           }

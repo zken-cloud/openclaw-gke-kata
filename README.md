@@ -10,6 +10,8 @@ Terraform-managed infrastructure for deploying OpenClaw on Google Cloud Platform
 - [Security Features](#security-features)
 - [Deployment Guide](#deployment-guide)
 - [End-to-End Testing](#end-to-end-testing)
+  - [Connecting to the GKE Cluster](#connecting-to-the-gke-cluster)
+  - [Troubleshooting](#troubleshooting)
 - [Telegram Channel Integration](#telegram-channel-integration)
 - [Windows VM Golden Image](#windows-vm-golden-image)
 - [Variables Reference](#variables-reference)
@@ -251,12 +253,66 @@ developers = {
 
 - **TLS with fingerprint pinning** -- self-signed ECDSA P256 cert, SHA256 fingerprint validated by node hosts
 - **Token authentication** -- gateway requires auth token for all connections
-- **Allowlist exec security** -- gateway enforces command allowlist (`safeBins`), node host uses `full` security
+- **Exec security** -- gateway and node hosts use `full` security with `ask: "off"` (auto-approve); configurable per-agent via `exec-approvals.json`
 - **Restricted envsubst** -- only named variables substituted (`$MODEL_PRIMARY,$MODEL_FALLBACKS,$GATEWAY_AUTH_TOKEN`)
 - **Container vulnerability scanning** -- `containerscanning.googleapis.com` API enabled on Artifact Registry
 - **Pinned LiteLLM image** -- SHA256 digest, not mutable tag
 - **Cluster deletion protection** -- `deletion_protection = true`
 - **Automated node pairing** -- background auto-approve for `role=node` devices only; operator devices still auto-approved by gateway
+
+### Exec Approval Configuration
+
+OpenClaw has a two-layer exec approval system — both the **gateway** and each **node host** independently control whether commands require approval. This deployment pre-configures both sides for auto-approve via `exec-approvals.json`.
+
+#### Settings Reference
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `security` | `"full"` | Allow all commands without restriction |
+| `security` | `"allowlist"` | Only allow commands listed in `safeBins` (requires `safeBinProfiles` in OpenClaw 2026.4+) |
+| `ask` | `"off"` | Never prompt for approval |
+| `ask` | `"always"` | Prompt for every command via TUI |
+| `askFallback` | `"full"` | If approval prompt times out, auto-approve |
+| `askFallback` | `"deny"` | If approval prompt times out, deny |
+
+#### Changing Approval Behavior
+
+**Via CLI on a node host:**
+
+```bash
+# Require approval for every command
+openclaw config set tools.exec.ask always
+
+# Restrict to allowlisted commands only
+openclaw config set tools.exec.security allowlist
+
+# Restore auto-approve
+openclaw config set tools.exec.security full
+openclaw config set tools.exec.ask off
+```
+
+**Via `exec-approvals.json`** (applied at startup by the entrypoint/startup scripts):
+
+```json
+{
+  "version": 1,
+  "defaults": {
+    "security": "full",
+    "ask": "off",
+    "askFallback": "full"
+  },
+  "agents": {
+    "main": {
+      "security": "full",
+      "ask": "off"
+    }
+  }
+}
+```
+
+You can also configure per-agent policies under the `agents` key to apply different approval rules for specific agents.
+
+> **Note:** Changes via CLI are ephemeral — the startup scripts re-apply `exec-approvals.json` on every restart. To make permanent changes, modify the approval config in the startup scripts (`scripts/entrypoint.sh`, `scripts/linux_startup.sh`, `scripts/windows_startup.ps1`).
 
 ---
 
@@ -369,28 +425,9 @@ kubectl rollout restart deployment -n openclaw -l component=brain
 
 ### Step 6: Verify Deployment
 
-```bash
-# Check pods are running
-kubectl get pods -n openclaw
+See [Connecting to the GKE Cluster](#connecting-to-the-gke-cluster) and [Verify Pods Are Running](#verify-pods-are-running) in the End-to-End Testing section below.
 
-# Expected output:
-# NAME                                    READY   STATUS    AGE
-# litellm-xxxxx                           1/1     Running   5m
-# openclaw-brain-alice-xxxxx              1/1     Running   5m
-# openclaw-brain-bob-xxxxx                1/1     Running   5m
-
-# Verify Kata runtime
-kubectl get pods -n openclaw -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.runtimeClassName}{"\n"}{end}'
-
-# Verify non-root
-kubectl exec -n openclaw deployment/openclaw-brain-alice -- id
-# uid=10001(openclaw) gid=10001(openclaw) groups=10001(openclaw)
-
-# Check services (ILBs) have IPs
-kubectl get svc -n openclaw
-```
-
-### Step 7: Verify Node Host Pairing (only if `enable_exec_vm = true`)
+### Step 7: Verify Node Host Pairing (only if `exec_vms` is non-empty)
 
 Wait 3-5 minutes for the VM startup script to install OpenClaw, clean stale identity, and start node hosts. Pairing is fully automated:
 
@@ -414,6 +451,53 @@ kubectl logs -n openclaw deployment/openclaw-brain-alice --tail=20 | grep -E "au
 ---
 
 ## End-to-End Testing
+
+### Connecting to the GKE Cluster
+
+After `terraform apply` completes, configure `kubectl` to connect to the cluster:
+
+```bash
+# Get cluster credentials
+gcloud container clusters get-credentials openclaw-cluster \
+  --region $(terraform output -raw gke_cluster_region 2>/dev/null || echo "us-central1") \
+  --project $(terraform output -raw project_id 2>/dev/null || echo "$PROJECT_ID")
+
+# Verify connectivity
+kubectl cluster-info
+kubectl get namespaces | grep openclaw
+```
+
+> **Important:** Your client IP must be in the `master_authorized_cidrs` list or within the GKE/exec-VM subnets. If you're using Cloud Shell, add its CIDR to `master_authorized_cidrs` in your `terraform.tfvars`:
+>
+> ```hcl
+> master_authorized_cidrs = {
+>   "Cloud Shell" = "34.80.0.0/16"   # Adjust for your region
+>   "Office VPN"  = "203.0.113.0/24"
+> }
+> ```
+
+### Verify Pods Are Running
+
+```bash
+# Check all pods in the openclaw namespace
+kubectl get pods -n openclaw
+
+# Expected output:
+# NAME                                    READY   STATUS    AGE
+# litellm-xxxxx                           1/1     Running   5m
+# openclaw-brain-alice-xxxxx              1/1     Running   5m
+# openclaw-brain-bob-xxxxx                1/1     Running   5m
+
+# Verify Kata runtime is active
+kubectl get pods -n openclaw -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.runtimeClassName}{"\n"}{end}'
+
+# Verify non-root
+kubectl exec -n openclaw deployment/openclaw-brain-alice -- id
+# uid=10001(openclaw) gid=10001(openclaw) groups=10001(openclaw)
+
+# Check ILB services have IPs (only if exec_vms is non-empty)
+kubectl get svc -n openclaw
+```
 
 ### Test via Node Invoke (non-interactive)
 
@@ -439,24 +523,46 @@ kubectl exec -it -n openclaw deployment/openclaw-brain-alice -- npx openclaw tui
 
 Once in the TUI:
 
-1. **Test Windows command execution:**
+1. **Test command execution:**
    ```
    You: Run "hostname" on the Windows node host
-   Agent: The hostname is "openclaw-gateway"
    ```
 
-2. **Test system info:**
+2. **Approve the command:** The agent will prepare the command and request approval. An approval box will appear in the TUI output:
+   ```
+   ┌─ exec ──────────────────────────────
+   │ hostname
+   │ host: windows-alice
+   │ id: a1b2c3
+   │ ─────────────────────────────────
+   │ /approve a1b2c3 allow
+   └─────────────────────────────────────
+   ```
+   Scroll up if needed to find the approval box and note the **id** (e.g., `a1b2c3`). Then type:
+   ```
+   /approve a1b2c3 allow
+   ```
+   Replace `a1b2c3` with the actual id shown in your approval box.
+
+3. **Expected result:**
+   ```
+   Agent: The hostname is "openclaw-exec-windows"
+   ```
+
+4. **Test more commands:**
    ```
    You: Run "ver" on the Windows node to get the Windows version
+   # Approve when prompted, then:
    Agent: Microsoft Windows [Version 10.0.20348.xxxx]
    ```
 
-3. **Test PowerShell:**
    ```
    You: Run "Get-Process | Select-Object -First 5" on the Windows node via PowerShell
    ```
 
-4. **Exit:** Press `Ctrl+C` or type `/exit`
+5. **Exit:** Press `Ctrl+C` or type `/exit`
+
+> **Tip:** If you cannot find the approval id, scroll up in the TUI — the approval box may be above the current viewport. The id is a short alphanumeric string shown in the exec approval block.
 
 ### Test Bob's Pod
 
@@ -473,6 +579,89 @@ Alice and Bob have separate:
 - PVCs (different persistent volumes)
 - Node host processes on Windows (different scheduled tasks)
 - Sessions and state (different `OPENCLAW_STATE_DIR` paths on both Linux and Windows)
+
+### Troubleshooting
+
+#### `kubectl` cannot connect / hangs / times out
+
+Your IP is not in the GKE master authorized networks. Fix:
+
+```bash
+# Check your current public IP
+curl -s ifconfig.me
+
+# Add it to terraform.tfvars
+master_authorized_cidrs = {
+  "My IP" = "YOUR_IP/32"
+}
+
+# Apply the change (updates the cluster, no downtime)
+terraform apply
+```
+
+If using Cloud Shell, add the Cloud Shell CIDR for your region (e.g., `34.80.0.0/16` for Asia, `35.235.240.0/20` for US). Check the [Cloud Shell IP ranges](https://cloud.google.com/shell/docs/limitations#ip_address_ranges) documentation.
+
+#### Pods stuck in `Pending` or `ContainerCreating`
+
+```bash
+# Check events for the pod
+kubectl describe pod -n openclaw <pod-name>
+
+# Common causes:
+# - "no nodes available": Node pool still provisioning (~5 min)
+# - "kata-clh runtime class not found": Kata not yet installed, wait for Helm release
+kubectl get runtimeclass kata-clh
+
+# - Image pull error: Build and push the image first (Step 4)
+kubectl get events -n openclaw --sort-by='.lastTimestamp' | tail -20
+```
+
+#### Node hosts show "disconnected"
+
+```bash
+# Check node status from the brain pod
+kubectl exec -n openclaw deployment/openclaw-brain-alice -- npx openclaw nodes status
+
+# Check gateway auto-approve logs
+kubectl logs -n openclaw deployment/openclaw-brain-alice --tail=30 | grep -E "auto-pair|auto-approved|pairing"
+
+# On Linux VM: check systemd service
+gcloud compute ssh openclaw-exec-linux --zone=ZONE --tunnel-through-iap \
+  -- sudo journalctl -u openclaw-node-alice -n 50
+
+# On Windows VM: check scheduled task output
+gcloud compute ssh openclaw-exec-windows --zone=ZONE --tunnel-through-iap \
+  -- powershell "Get-Content C:\\openclaw\\nodes\\alice\\node-host.log -Tail 30"
+```
+
+Common causes:
+- **Stale device identity** — restart the VM to trigger the startup script cleanup
+- **ILB not ready** — wait 2-3 minutes for the internal load balancer IP to provision (`kubectl get svc -n openclaw`)
+- **Gateway token mismatch** — verify the token in Secret Manager matches what the VM fetched at boot
+
+#### Exec VM cannot reach GKE API
+
+```bash
+# Verify firewall rule exists
+gcloud compute firewall-rules list --filter="name~exec-vm" --project=$PROJECT_ID
+
+# Verify the VM subnet is in master_authorized_networks
+gcloud container clusters describe openclaw-cluster --region=REGION \
+  --format="yaml(masterAuthorizedNetworksConfig)"
+```
+
+#### LiteLLM returning errors
+
+```bash
+# Check LiteLLM logs
+kubectl logs -n openclaw deployment/litellm --tail=50
+
+# Test Vertex AI connectivity from LiteLLM pod
+kubectl exec -n openclaw deployment/litellm -- curl -s http://localhost:4000/health
+
+# Verify Workload Identity is bound
+kubectl describe sa openclaw-brain -n openclaw | grep annotation
+```
 
 ---
 
@@ -754,6 +943,7 @@ gcloud scheduler jobs create http openclaw-golden-image-rebuild \
 | `gke_node_count` | No | `1` | Nodes per zone |
 | **Execution VMs** | | | |
 | `exec_vms` | No | `{}` | Map of execution VMs (see below) |
+| `master_authorized_cidrs` | No | `{}` | Additional CIDRs allowed to access GKE control plane |
 | `exec_vm_subnet_cidr` | No | `10.20.0.0/24` | VM subnet CIDR |
 | **Secrets** | | | |
 | `telegram_bot_token` | No | `""` | Telegram bot token (sensitive, use `TF_VAR_`) |

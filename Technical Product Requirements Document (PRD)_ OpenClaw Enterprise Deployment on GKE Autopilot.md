@@ -230,7 +230,7 @@ All criteria verified as of April 2, 2026:
 
 | Parameter | Value |
 |-----------|-------|
-| GCP Project | `test-claw-project` |
+| GCP Project | `my-gcp-project` |
 | Region | `asia-southeast1` |
 | Zone | `asia-southeast1-a` |
 | GKE Cluster | `openclaw-cluster` (Standard, not Autopilot) |
@@ -240,7 +240,7 @@ All criteria verified as of April 2, 2026:
 | LLM Models | Gemini 3.1 Pro Preview (primary), Flash Lite Preview (fallback) |
 | LLM Route | Pod -> LiteLLM (:4000) -> Vertex AI (global) |
 | Kata Version | 3.28.0 (Helm chart) |
-| State Bucket | `test-claw-project-tf-state` |
+| State Bucket | `my-gcp-project-tf-state` |
 
 ## 8. Known Limitations and Future Work
 

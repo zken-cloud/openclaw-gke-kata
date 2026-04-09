@@ -40,6 +40,12 @@ variable "gke_subnet_cidr" {
   default     = "10.10.0.0/24"
 }
 
+variable "master_authorized_cidrs" {
+  description = "Additional CIDR blocks allowed to access the GKE control plane (e.g. admin IPs, CI/CD runners). GKE and exec-VM subnets are added automatically."
+  type = map(string)
+  default = {}
+}
+
 variable "exec_vm_subnet_cidr" {
   description = "CIDR range for the execution VM subnet. Only used when exec_vms is non-empty."
   type        = string

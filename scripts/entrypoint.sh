@@ -17,6 +17,16 @@ mkdir -p "$STATE_DIR"
 # Always deploy the latest config from the template
 cp /app/openclaw.json "$STATE_DIR/openclaw.json"
 
+# Safety check: gateway.bind MUST be "lan" for ILB and node host connectivity.
+# "auto" resolves to loopback-only which breaks kube-proxy forwarding.
+# "all" is not a valid OpenClaw value and causes CrashLoopBackOff.
+BIND_VALUE=$(jq -r '.gateway.bind // "missing"' "$STATE_DIR/openclaw.json")
+if [ "$BIND_VALUE" != "lan" ]; then
+  echo "FATAL: gateway.bind is '$BIND_VALUE', must be 'lan' for ILB connectivity. Fixing."
+  jq '.gateway.bind = "lan"' "$STATE_DIR/openclaw.json" > "$STATE_DIR/openclaw.json.tmp" \
+    && mv "$STATE_DIR/openclaw.json.tmp" "$STATE_DIR/openclaw.json"
+fi
+
 # Configure exec approvals for auto-approve on gateway side
 if [ ! -f "$STATE_DIR/exec-approvals.json" ] || ! grep -q '"security": "full"' "$STATE_DIR/exec-approvals.json" 2>/dev/null; then
   cat > "$STATE_DIR/exec-approvals.json" << 'EOFEA'

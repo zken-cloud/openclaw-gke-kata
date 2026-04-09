@@ -7,8 +7,10 @@ RUN apt-get update && apt-get install -y \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install OpenClaw
-RUN npm install -g openclaw --ignore-scripts
+# Install OpenClaw and patch throwOnLoadError to prevent crashes from optional plugin deps
+RUN npm install -g openclaw --ignore-scripts \
+    && LOADER=$(ls /usr/local/lib/node_modules/openclaw/dist/runtime-registry-loader-*.js 2>/dev/null | head -1) \
+    && [ -n "$LOADER" ] && sed -i 's/throwOnLoadError: true/throwOnLoadError: false/g' "$LOADER" || true
 
 # Create app directory
 WORKDIR /app

@@ -31,6 +31,15 @@ model_fallbacks  = "[\"litellm/gemini-3.1-flash-lite-preview\"]"
 # telegram_bot_token = ""
 # brave_api_key      = ""
 
+# ── Optional: Master authorized networks ────────────────────────────────────
+# Additional CIDRs allowed to access the GKE control plane.
+# GKE subnet and exec-VM subnet are added automatically.
+
+# master_authorized_cidrs = {
+#   "Office VPN"   = "203.0.113.0/24"
+#   "CI/CD runner" = "10.50.0.0/24"
+# }
+
 # ── Optional: Execution VMs ─────────────────────────────────────────────────
 # Uncomment to add VMs for OS-native command execution.
 # OS is auto-detected from the image name.

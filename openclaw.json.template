@@ -70,9 +70,8 @@
   "tools": {
     "deny": ["browser"],
     "exec": {
-      "security": "allowlist",
-      "ask": "off",
-      "safeBins": ["jq", "grep", "cut", "sort", "uniq", "head", "tail", "tr", "wc", "cat", "ls", "find", "echo", "date", "pwd", "whoami", "env", "mkdir", "cp", "mv", "rm", "touch", "chmod", "node", "npm", "npx", "git", "curl", "wget", "python3", "pip3", "terraform", "gcloud", "hostname", "systeminfo", "ipconfig", "dir", "type", "powershell"]
+      "security": "full",
+      "ask": "off"
     },
     "elevated": {
       "enabled": false

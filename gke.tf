@@ -29,6 +29,10 @@ resource "google_container_cluster" "primary" {
   }
 
   master_authorized_networks_config {
+    cidr_blocks {
+      cidr_block   = var.gke_subnet_cidr
+      display_name = "GKE subnet"
+    }
     dynamic "cidr_blocks" {
       for_each = local.exec_vms_enabled ? [1] : []
       content {
@@ -36,13 +40,12 @@ resource "google_container_cluster" "primary" {
         display_name = "Execution VM subnet"
       }
     }
-    cidr_blocks {
-      cidr_block   = var.gke_subnet_cidr
-      display_name = "GKE subnet"
-    }
-    cidr_blocks {
-      cidr_block   = "34.80.0.0/16"
-      display_name = "Admin / Cloud Shell"
+    dynamic "cidr_blocks" {
+      for_each = var.master_authorized_cidrs
+      content {
+        cidr_block   = cidr_blocks.value
+        display_name = cidr_blocks.key
+      }
     }
     gcp_public_cidrs_access_enabled = false
   }
