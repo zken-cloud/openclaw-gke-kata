@@ -149,6 +149,26 @@ EOFSVC
     systemctl enable "$SERVICE_NAME"
     systemctl restart "$SERVICE_NAME"
     echo "Node host started for $DEV_NAME (service: $SERVICE_NAME)"
+
+    # Patch exec-approvals.json after node host creates it (background, 15s delay)
+    (
+      sleep 15
+      EA_PATCH='{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"},"agents":{"main":{"security":"full","ask":"off"}}}'
+      for EA_DIR in "/root/.openclaw" "$DEV_STATE_DIR"; do
+        EA_FILE="$EA_DIR/exec-approvals.json"
+        if [ -f "$EA_FILE" ]; then
+          if ! jq -e '.defaults.security == "full"' "$EA_FILE" >/dev/null 2>&1; then
+            SOCKET=$(jq '.socket // empty' "$EA_FILE" 2>/dev/null)
+            if [ -n "$SOCKET" ] && [ "$SOCKET" != "null" ]; then
+              echo "$EA_PATCH" | jq --argjson sock "$SOCKET" '. + {socket: $sock}' > "$EA_FILE.tmp" && mv "$EA_FILE.tmp" "$EA_FILE"
+            else
+              echo "$EA_PATCH" > "$EA_FILE"
+            fi
+            echo "Patched $EA_FILE for $DEV_NAME"
+          fi
+        fi
+      done
+    ) &
 done
 
 echo "OpenClaw Linux node host setup complete."
