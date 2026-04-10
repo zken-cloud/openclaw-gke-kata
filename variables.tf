@@ -150,12 +150,17 @@ variable "model_fallbacks" {
 }
 
 variable "developers" {
-  description = "Map of developer names to their configuration. Each developer gets a dedicated OpenClaw pod, PVC, and SSH key."
+  description = "Map of developer names to their configuration. Each developer gets a dedicated OpenClaw pod, PVC, and SSH key. Names must be lowercase alphanumeric with hyphens only."
   type = map(object({
     active = bool
   }))
   default = {
     "default" = { active = true }
+  }
+
+  validation {
+    condition     = alltrue([for name in keys(var.developers) : can(regex("^[a-z0-9][a-z0-9-]{0,62}$", name))])
+    error_message = "Developer names must be lowercase alphanumeric with hyphens, starting with a letter or digit (max 63 chars). This prevents command injection in startup scripts."
   }
 }
 

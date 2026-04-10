@@ -1,10 +1,15 @@
 locals {
   gateway_auth_token = var.gateway_auth_token != "" ? var.gateway_auth_token : random_id.gateway_token.hex
-
+  litellm_master_key = random_password.litellm_key.result
 }
 
 resource "random_id" "gateway_token" {
   byte_length = 24
+}
+
+resource "random_password" "litellm_key" {
+  length  = 32
+  special = false
 }
 
 # Gateway TLS certificate (self-signed, managed by Terraform)

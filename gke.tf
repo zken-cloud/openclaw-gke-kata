@@ -87,6 +87,9 @@ resource "google_container_node_pool" "kata_pool" {
     }
 
     shielded_instance_config {
+      # Secure boot disabled: Kata Containers requires loading unsigned kernel
+      # modules for nested virtualization (kata-clh runtime). Enabling this
+      # prevents the Kata runtime from starting.
       enable_secure_boot = false
     }
 

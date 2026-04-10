@@ -6,8 +6,9 @@ set -e
 export MODEL_PRIMARY="${MODEL_PRIMARY:-litellm/gemini-3.1-pro-preview}"
 export MODEL_FALLBACKS="${MODEL_FALLBACKS:-[\"litellm/gemini-3.1-flash-lite-preview\"]}"
 export GATEWAY_AUTH_TOKEN="${GATEWAY_AUTH_TOKEN:-}"
+export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 
-envsubst '$MODEL_PRIMARY,$MODEL_FALLBACKS,$GATEWAY_AUTH_TOKEN' < /app/openclaw.json.template > /app/openclaw.json
+envsubst '$MODEL_PRIMARY,$MODEL_FALLBACKS,$GATEWAY_AUTH_TOKEN,$LITELLM_MASTER_KEY' < /app/openclaw.json.template > /app/openclaw.json
 
 # Use persistent state dir on PVC so pairings survive pod restarts
 STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"

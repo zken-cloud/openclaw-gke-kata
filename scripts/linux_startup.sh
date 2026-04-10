@@ -62,7 +62,7 @@ fi
 echo "Fetching gateway auth token from Secret Manager..."
 GATEWAY_TOKEN=$(gcloud secrets versions access latest --secret="openclaw-gateway-token" --quiet 2>&1)
 if [ $? -ne 0 ]; then
-    echo "ERROR: Failed to fetch gateway token from Secret Manager: $GATEWAY_TOKEN"
+    echo "ERROR: Failed to fetch gateway token from Secret Manager. Check IAM permissions and secret existence."
     exit 1
 fi
 echo "Gateway token retrieved from Secret Manager."
@@ -131,6 +131,11 @@ for DEV_NAME in $DEV_NAMES; do
         done
     done
 
+    # Store gateway token in a file with restricted permissions (not in systemd unit or env)
+    TOKEN_FILE="/opt/openclaw/state/.gateway-token"
+    echo "OPENCLAW_GATEWAY_TOKEN=$GATEWAY_TOKEN" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+
     # Create systemd service for each developer's node host
     cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOFSVC
 [Unit]
@@ -143,7 +148,7 @@ Type=simple
 Restart=always
 RestartSec=10
 Environment=OPENCLAW_STATE_DIR=$DEV_STATE_DIR
-Environment=OPENCLAW_GATEWAY_TOKEN=$GATEWAY_TOKEN
+EnvironmentFile=$TOKEN_FILE
 ExecStartPre=/bin/mkdir -p $DEV_STATE_DIR
 ExecStart=$(which npx) openclaw node run --host $GATEWAY_IP --port 18789 --tls --tls-fingerprint $TLS_FINGERPRINT --display-name "linux-$DEV_NAME"
 

@@ -33,6 +33,20 @@ resource "kubernetes_secret" "gateway_token" {
   type = "Opaque"
 }
 
+# LiteLLM master key as K8s secret (auto-generated random password)
+resource "kubernetes_secret" "litellm_key" {
+  metadata {
+    name      = "litellm-master-key"
+    namespace = kubernetes_namespace.openclaw.metadata[0].name
+  }
+
+  data = {
+    key = local.litellm_master_key
+  }
+
+  type = "Opaque"
+}
+
 resource "kubernetes_service_account" "openclaw_brain" {
   metadata {
     name      = "openclaw-brain"
@@ -71,7 +85,8 @@ resource "kubernetes_config_map" "litellm_config" {
         }
       ]
       general_settings = {
-        master_key = "sk-litellm-local-only"
+        # master_key provided via LITELLM_MASTER_KEY env var from K8s secret
+        master_key = "os.environ/LITELLM_MASTER_KEY"
       }
     })
   }
@@ -151,6 +166,16 @@ resource "kubernetes_deployment" "litellm" {
 
           port {
             container_port = 4000
+          }
+
+          env {
+            name = "LITELLM_MASTER_KEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.litellm_key.metadata[0].name
+                key  = "key"
+              }
+            }
           }
 
           volume_mount {
@@ -256,6 +281,9 @@ resource "kubernetes_deployment" "openclaw_brain" {
             name  = "OPENCLAW_STATE_DIR"
             value = "/app/workspace/.openclaw-state"
           }
+          # Required: gateway uses a self-signed TLS cert with fingerprint pinning.
+          # Node hosts validate via --tls-fingerprint, not CA chain.
+          # Without this, the node.js process rejects the self-signed cert.
           env {
             name  = "NODE_TLS_REJECT_UNAUTHORIZED"
             value = "0"
@@ -282,6 +310,15 @@ resource "kubernetes_deployment" "openclaw_brain" {
               secret_key_ref {
                 name = kubernetes_secret.gateway_token.metadata[0].name
                 key  = "token"
+              }
+            }
+          }
+          env {
+            name = "LITELLM_MASTER_KEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.litellm_key.metadata[0].name
+                key  = "key"
               }
             }
           }

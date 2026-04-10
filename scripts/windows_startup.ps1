@@ -57,7 +57,7 @@ Write-Output "openclaw version: $openclawVer"
 Write-Output "Fetching gateway auth token from Secret Manager..."
 $gatewayToken = gcloud secrets versions access latest --secret="openclaw-gateway-token" --quiet 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Output "ERROR: Failed to fetch gateway token from Secret Manager: $gatewayToken"
+    Write-Output "ERROR: Failed to fetch gateway token from Secret Manager. Check IAM permissions and secret existence."
     exit 1
 }
 Write-Output "Gateway token retrieved from Secret Manager."

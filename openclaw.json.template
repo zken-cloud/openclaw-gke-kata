@@ -38,7 +38,7 @@
       "litellm": {
         "api": "openai-completions",
         "baseUrl": "http://litellm.openclaw.svc.cluster.local:4000/v1",
-        "apiKey": "sk-litellm-local-only",
+        "apiKey": "${LITELLM_MASTER_KEY}",
         "models": [
           { "id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview" },
           { "id": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview" }
