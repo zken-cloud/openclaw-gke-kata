@@ -12,8 +12,6 @@ Deploy [OpenClaw](https://docs.openclaw.ai) on Google Cloud with GKE Standard, K
 - [End-to-End Testing](#end-to-end-testing)
 - [Adding Messaging Channels](#adding-messaging-channels)
   - [Telegram](#telegram)
-  - [WhatsApp](#whatsapp)
-  - [Slack](#slack)
 - [Execution VM (Optional)](#execution-vm-optional)
 - [Windows VM Golden Image](#windows-vm-golden-image)
 - [Observability](#observability)
@@ -651,63 +649,6 @@ kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
 
 [Back to top](#table-of-contents)
 
-### WhatsApp
-
-[Back to top](#table-of-contents)
-
-#### 1. Add WhatsApp (Interactive — displays QR code)
-
-```bash
-kubectl exec -it -n openclaw deploy/openclaw-brain-alice -- \
-  npx openclaw channels login --channel whatsapp
-```
-
-#### 2. Scan the QR Code
-
-Scan the QR code displayed in the terminal with your WhatsApp app.
-
-#### 3. Restart the Pod
-
-```bash
-kubectl delete pod -n openclaw -l developer=alice
-```
-
-#### 4. Test
-
-Send a message to the linked WhatsApp number. The agent should respond.
-
-[Back to top](#table-of-contents)
-
-### Slack
-
-[Back to top](#table-of-contents)
-
-#### 1. Create a Slack App
-
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
-2. Under **OAuth & Permissions**, add bot scopes: `chat:write`, `app_mentions:read`, `im:history`
-3. Install the app to your workspace
-4. Copy the **Bot Token** (`xoxb-...`) and **App Token** (`xapp-...`)
-
-#### 2. Add the Channel via CLI
-
-```bash
-kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
-  npx openclaw channels add --channel slack --app-token "xapp-..." --bot-token "xoxb-..."
-```
-
-#### 3. Restart the Pod
-
-```bash
-kubectl delete pod -n openclaw -l developer=alice
-```
-
-#### 4. Test
-
-Message the bot in Slack. It should respond via the OpenClaw agent.
-
-[Back to top](#table-of-contents)
-
 ### Managing Channels
 
 ```bash
@@ -728,12 +669,13 @@ kubectl port-forward -n openclaw svc/openclaw-gateway-alice 18789:18789
 # Then open http://localhost:18789
 ```
 
-### Supported Channels
+### Other Supported Channels
+
+OpenClaw supports 20+ channels beyond Telegram. Use `npx openclaw channels add --help` inside a pod to see all available options:
 
 | Channel | Auth Method |
 |---------|-------------|
-| Telegram | Bot token (from @BotFather) |
-| WhatsApp | QR code scan (`kubectl exec -it`) |
+| WhatsApp | QR code scan (`channels login --channel whatsapp`) |
 | Slack | App token + Bot token |
 | Discord | Bot token |
 | Signal | Linked device (QR code) |
