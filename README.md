@@ -384,23 +384,39 @@ kubectl exec -n openclaw deployment/openclaw-brain-alice -- id
 
 [Back to top](#table-of-contents)
 
-### Step 7: Verify Node Host Pairing (only if `exec_vms` is non-empty)
+### Step 7: Approve Node Host Pairing (only if `exec_vms` is non-empty)
 
-Wait 3–5 minutes for the VM startup script to install OpenClaw, clean stale identity, and start node hosts. Pairing is fully automated:
+Wait 3–5 minutes for the VM startup script to install OpenClaw and start node hosts. Each node host will attempt to connect to its developer's gateway pod and request pairing approval.
+
+#### Option A: Approve via TUI
 
 ```bash
-# Check alice's node connection
+kubectl exec -it -n openclaw deployment/openclaw-brain-alice -- npx openclaw tui
+```
+
+Once in the TUI, you will see a pairing request notification. Type the approval command shown (e.g., `/approve <request-id> allow`).
+
+#### Option B: Approve via CLI
+
+```bash
+# List pending pairing requests
+kubectl exec -n openclaw deployment/openclaw-brain-alice -- npx openclaw nodes pending
+
+# Approve a pending request by ID
+kubectl exec -n openclaw deployment/openclaw-brain-alice -- npx openclaw nodes approve <REQUEST_ID>
+```
+
+> **Tip:** The node host retries every 10 seconds. If `nodes pending` shows no requests, wait a moment and try again — the request may appear briefly between retries.
+
+#### Verify Connection
+
+```bash
+# Check alice's nodes
 kubectl exec -n openclaw deployment/openclaw-brain-alice -- npx openclaw nodes status
-# Expected: Known: 1 · Paired: 1 · Connected: 1
+# Expected: linux-alice and/or windows-alice showing "paired · connected"
 
 # Check bob
 kubectl exec -n openclaw deployment/openclaw-brain-bob -- npx openclaw nodes status
-```
-
-If nodes show "disconnected", check the gateway logs:
-
-```bash
-kubectl logs -n openclaw deployment/openclaw-brain-alice --tail=20 | grep -E "auto-pair|auto-approved|pairing"
 ```
 
 [Back to top](#table-of-contents)
@@ -600,7 +616,7 @@ OpenClaw supports 20+ channels including Telegram, WhatsApp, Slack, Discord, Sig
 
 ```bash
 kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
-  openclaw channels add telegram --bot-token "YOUR_BOT_TOKEN"
+  npx openclaw channels add --channel telegram --token "YOUR_BOT_TOKEN"
 ```
 
 #### 3. Restart the Pod
@@ -609,17 +625,28 @@ kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
 kubectl delete pod -n openclaw -l developer=alice
 ```
 
-#### 4. Test
+#### 4. Approve Pairing
 
-Send a message to your bot on Telegram. You should receive a response from the OpenClaw agent.
-
-#### 5. Optional: Restrict Access
-
-To require pairing codes for Telegram conversations:
+Send a message to your bot on Telegram. The bot will reply with a **pairing code** and ask you to approve it. From your terminal, run:
 
 ```bash
 kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
-  openclaw config set channels.telegram.dmPolicy "pairing"
+  npx openclaw pairing approve telegram <PAIRING_CODE>
+```
+
+Replace `<PAIRING_CODE>` with the code shown in the Telegram message.
+
+#### 5. Test
+
+Send another message to the bot. You should now receive a response from the OpenClaw agent.
+
+#### 6. Optional: Restrict Access
+
+To require pairing codes for all future Telegram conversations (recommended for production):
+
+```bash
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
+  npx openclaw config set channels.telegram.dmPolicy "pairing"
 ```
 
 [Back to top](#table-of-contents)
@@ -632,7 +659,7 @@ kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
 
 ```bash
 kubectl exec -it -n openclaw deploy/openclaw-brain-alice -- \
-  openclaw channels add whatsapp
+  npx openclaw channels login --channel whatsapp
 ```
 
 #### 2. Scan the QR Code
@@ -666,7 +693,7 @@ Send a message to the linked WhatsApp number. The agent should respond.
 
 ```bash
 kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
-  openclaw channels add slack --app-token "xapp-..." --bot-token "xoxb-..."
+  npx openclaw channels add --channel slack --app-token "xapp-..." --bot-token "xoxb-..."
 ```
 
 #### 3. Restart the Pod
@@ -685,13 +712,16 @@ Message the bot in Slack. It should respond via the OpenClaw agent.
 
 ```bash
 # List configured channels
-kubectl exec -n openclaw deploy/openclaw-brain-alice -- openclaw channels list
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw channels list
 
 # Check channel status
-kubectl exec -n openclaw deploy/openclaw-brain-alice -- openclaw channels status
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw channels status
 
 # Remove a channel
-kubectl exec -n openclaw deploy/openclaw-brain-alice -- openclaw channels remove
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw channels remove --channel telegram
+
+# Check channel logs
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw channels logs
 
 # Or use the Control UI via port-forward:
 kubectl port-forward -n openclaw svc/openclaw-gateway-alice 18789:18789
@@ -747,7 +777,7 @@ When `exec_vms` is non-empty, Terraform creates:
 - A shared subnet and firewall rule for VM-to-GKE connectivity
 - A shared service account with logging/monitoring/Secret Manager access
 - Per-developer Internal Load Balancer services on GKE
-- Per-developer node host processes on each VM (auto-paired with gateway pods)
+- Per-developer node host processes on each VM
 
 ### Data Flow: Agent Command Execution
 
@@ -763,15 +793,75 @@ graph LR
     B --> A
 ```
 
-### Automated Node Host Pairing
+### Node Host Pairing
 
-Pairing is fully automated — no manual approval needed:
+Each node host must be paired with its developer's gateway pod before it can execute commands. The VM startup script starts per-developer node hosts automatically, but **pairing requires manual approval**.
 
-1. Gateway pod starts with a background auto-approve loop (`entrypoint.sh`)
-2. VM startup script cleans stale device identity on every boot, then starts per-developer node hosts
-3. Each node host connects to its developer's ILB and sends a pairing request
-4. The auto-approve loop detects pending `role=node` requests and approves them within ~15 seconds
-5. The node host reconnects and is fully operational
+1. VM startup script installs OpenClaw, fetches the gateway token, and starts per-developer node hosts
+2. Each node host connects to its developer's ILB and sends a pairing request
+3. The developer approves the request via TUI or CLI (see [Step 7](#step-7-approve-node-host-pairing-only-if-exec_vms-is-non-empty) in the Deployment Guide)
+4. The node host reconnects and is fully operational
+
+After initial pairing, the node host identity is persisted on the VM. Subsequent reconnections (e.g., after pod restart) reuse the same identity and do not require re-approval — unless the VM is reprovisioned or identity files are deleted.
+
+### Managing Nodes
+
+```bash
+# List all paired nodes and their connection status
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw nodes status
+
+# List pending pairing requests
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw nodes pending
+
+# Approve a pending node
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw nodes approve <REQUEST_ID>
+
+# Reject a pending node
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw nodes reject <REQUEST_ID>
+
+# Invoke a command on a connected node
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
+  npx openclaw nodes invoke --node <NODE_ID> --command system.which --params '{"bins":["node"]}'
+```
+
+### Adding New VMs
+
+To add more execution VMs, add entries to the `exec_vms` map in `terraform.tfvars` and apply:
+
+```hcl
+exec_vms = {
+  "windows" = { os_image = "windows-cloud/windows-2022-core" }
+  "linux"   = { os_image = "debian-cloud/debian-12" }
+  # Add a new VM:
+  "linux-2" = {
+    os_image          = "debian-cloud/debian-12"
+    machine_type      = "e2-standard-4"
+    boot_disk_size_gb = 100
+  }
+}
+```
+
+```bash
+terraform apply
+```
+
+Terraform will create the new VM, install OpenClaw via the startup script, and start per-developer node hosts. You will need to approve pairing for each new node host (see [Step 7](#step-7-approve-node-host-pairing-only-if-exec_vms-is-non-empty)).
+
+### Removing Stale Nodes
+
+If nodes accumulate stale paired entries (e.g., after VM reprovisioning), clean them up:
+
+```bash
+# List all paired nodes — note IDs of stale/disconnected entries
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- npx openclaw nodes list
+
+# Remove stale entries by deleting the pairing data and restarting the pod
+kubectl exec -n openclaw deploy/openclaw-brain-alice -- \
+  sh -c "rm -f ~/.openclaw/nodes/paired.json ~/.openclaw/devices/paired.json"
+kubectl delete pod -n openclaw -l developer=alice
+```
+
+Then re-approve the node hosts when they reconnect.
 
 [Back to top](#table-of-contents)
 
