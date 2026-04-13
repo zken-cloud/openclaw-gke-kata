@@ -103,7 +103,7 @@
 
   "plugins": {
     "enabled": true,
-    "allow": []
+    "allow": ["litellm"]
   },
 
   "discovery": {

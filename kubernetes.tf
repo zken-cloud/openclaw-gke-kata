@@ -128,8 +128,6 @@ resource "kubernetes_deployment" "litellm" {
 
   wait_for_rollout = false
 
-  depends_on = [time_sleep.kata_ready]
-
   spec {
     replicas = 1
 
@@ -150,7 +148,8 @@ resource "kubernetes_deployment" "litellm" {
 
       spec {
         service_account_name = kubernetes_service_account.openclaw_brain.metadata[0].name
-        runtime_class_name   = "kata-clh"
+        # LiteLLM is a simple HTTP proxy — no user code execution, no need for VM-level isolation.
+        # Removing Kata reduces memory by ~256MB and eliminates Kata VM I/O overhead.
 
         security_context {
           run_as_non_root = true
@@ -166,6 +165,17 @@ resource "kubernetes_deployment" "litellm" {
 
           port {
             container_port = 4000
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "512Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "1Gi"
+            }
           }
 
           env {
@@ -277,9 +287,26 @@ resource "kubernetes_deployment" "openclaw_brain" {
             container_port = 18789
           }
 
+          resources {
+            requests = {
+              cpu    = "500m"
+              memory = "1Gi"
+            }
+            limits = {
+              cpu    = "2000m"
+              memory = "2Gi"
+            }
+          }
+
           env {
             name  = "OPENCLAW_STATE_DIR"
             value = "/app/workspace/.openclaw-state"
+          }
+          # Kata VM overhead causes the default 10s WSS handshake to time out.
+          # Both gateway (server) and CLI (client) read this env var.
+          env {
+            name  = "OPENCLAW_HANDSHAKE_TIMEOUT_MS"
+            value = "60000"
           }
           # Required: gateway uses a self-signed TLS cert with fingerprint pinning.
           # Node hosts validate via --tls-fingerprint, not CA chain.
